@@ -3,63 +3,43 @@ import streamlit as st
 import plotly.graph_objects as go
 from scipy.integrate import solve_ivp
 
-# ============================================================
-# Three-Body Simulator with Test Planet and Temperature Model
-# ============================================================
-
 st.set_page_config(page_title="Three-Body Simulator", layout="wide")
 
-st.title("Three-Body Problem Simulator with Planet Temperature")
-st.write(
-    "This simulator shows three massive bodies interacting gravitationally. "
-    "A small planet follows their gravitational field but does not affect them."
-)
+st.title("Three-Body Problem Simulator with Planet")
 
-# ============================================================
-# Sidebar controls
-# ============================================================
-
-st.sidebar.header("Simulation Controls")
+st.sidebar.header("Controls")
 
 G = st.sidebar.slider("Gravity constant", 0.1, 5.0, 1.0, 0.1)
 t_max = st.sidebar.slider("Simulation time", 5, 100, 30)
-steps = st.sidebar.slider("Steps", 200, 5000, 1200)
-trace_length = st.sidebar.slider("Trace length", 20, 1000, 200)
-frame_step = st.sidebar.slider("Animation frame step", 1, 20, 2)
-speed = st.sidebar.slider("Animation speed ms/frame", 10, 300, 40)
+steps = st.sidebar.slider("Steps", 200, 3000, 800)
+trace_length = st.sidebar.slider("Trace length", 20, 600, 200)
+frame_step = st.sidebar.slider("Animation frame step", 1, 20, 4)
+speed = st.sidebar.slider("Animation speed ms/frame", 10, 200, 40)
 
-st.sidebar.header("Mass Controls")
-
-m1 = st.sidebar.slider("Mass 1", 0.1, 5.0, 1.0)
-m2 = st.sidebar.slider("Mass 2", 0.1, 5.0, 1.0)
-m3 = st.sidebar.slider("Mass 3", 0.1, 5.0, 1.0)
-
-# Planet is a test particle:
-# it feels gravity from the three bodies but does not affect them.
-masses = np.array([m1, m2, m3, 0.0])
-
-st.sidebar.header("Planet Temperature Model")
-
-base_temp = st.sidebar.slider("Base temperature", -100, 100, 20)
-heating_strength = st.sidebar.slider("Heating strength", 1, 300, 80)
-temp_scale = st.sidebar.slider("Distance softening", 0.1, 5.0, 1.0)
+preset = st.sidebar.selectbox(
+    "Preset",
+    [
+        "Random",
+        "Stable Planet",
+        "Random Binary Star",
+        "Random Figure Eight",
+        "Random Chaotic"
+    ]
+)
 
 run = st.sidebar.button("Run Simulation")
 reset = st.sidebar.button("Reset")
+new_random = st.sidebar.button("🎲 New Random System")
 
-if reset:
+if reset or new_random:
     st.session_state.clear()
     st.rerun()
 
-# ============================================================
-# Visual style
-# ============================================================
-
 colors = [
-    "#1f77b4",   # Mass 1 blue
-    "#ff7f0e",   # Mass 2 orange
-    "#2ca02c",   # Mass 3 green
-    "#9467bd"    # Planet purple
+    "#1f77b4",   # Mass 1
+    "#ff7f0e",   # Mass 2
+    "#2ca02c",   # Mass 3
+    "#9467bd"    # Planet
 ]
 
 names = ["Mass 1", "Mass 2", "Mass 3", "Planet"]
@@ -68,73 +48,118 @@ names = ["Mass 1", "Mass 2", "Mass 3", "Planet"]
 def mass_to_size(m):
     """
     Convert mass to marker size.
-    Uses logarithmic scaling so large masses do not become too large visually.
+    Square-root scaling keeps large masses visible but not too large.
     """
-    return 8 + 12 * np.log2(m + 1)
+    return 12 + 6 * np.sqrt(m)
 
 
-def temperature_to_color(temp):
+def get_initial_conditions(preset_name):
     """
-    Convert planet temperature to a simple color.
-    Blue = cold, purple = medium, red/yellow = hot.
+    Return initial positions, velocities, and masses.
+
+    There are 4 objects:
+    - Object 0: Mass 1
+    - Object 1: Mass 2
+    - Object 2: Mass 3
+    - Object 3: Planet
+
+    The planet is a test particle with mass = 0.
+    It feels gravity from the three masses, but it does not affect them.
     """
-    if temp < 0:
-        return "#1f77b4"  # cold blue
-    elif temp < 50:
-        return "#9467bd"  # mild purple
-    elif temp < 120:
-        return "#ff7f0e"  # warm orange
+
+    if preset_name == "Stable Planet":
+        positions = np.array([
+            [0.0, 0.0],
+            [2.5, 0.0],
+            [-2.5, 0.0],
+            [0.0, 5.0]
+        ])
+
+        velocities = np.array([
+            [0.0, 0.0],
+            [0.0, 1.40],
+            [0.0, -1.40],
+            [-0.95, 0.0]
+        ])
+
+        masses = np.array([5.0, 0.3, 0.3, 0.0])
+
+    elif preset_name == "Random Binary Star":
+        positions = np.array([
+            [-1.5, 0.0],
+            [1.5, 0.0],
+            np.random.uniform(-4, 4, 2),
+            np.random.uniform(-8, 8, 2)
+        ])
+
+        velocities = np.array([
+            [0.0, np.random.uniform(0.8, 1.2)],
+            [0.0, -np.random.uniform(0.8, 1.2)],
+            np.random.uniform(-0.5, 0.5, 2),
+            np.random.uniform(-1.0, 1.0, 2)
+        ])
+
+        masses = np.array([
+            np.random.uniform(3.0, 5.0),
+            np.random.uniform(3.0, 5.0),
+            np.random.uniform(0.2, 1.0),
+            0.0
+        ])
+
+    elif preset_name == "Random Figure Eight":
+        positions = np.array([
+            [-0.97000436, 0.24308753],
+            [0.97000436, -0.24308753],
+            [0.0, 0.0],
+            np.random.uniform(-6, 6, 2)
+        ])
+
+        velocities = np.array([
+            [0.466203685, 0.43236573],
+            [0.466203685, 0.43236573],
+            [-0.93240737, -0.86473146],
+            np.random.uniform(-1.0, 1.0, 2)
+        ])
+
+        masses = np.array([
+            np.random.uniform(0.8, 1.2),
+            np.random.uniform(0.8, 1.2),
+            np.random.uniform(0.8, 1.2),
+            0.0
+        ])
+
+    elif preset_name == "Random Chaotic":
+        positions = np.random.uniform(-3, 3, (4, 2))
+        velocities = np.random.uniform(-1.2, 1.2, (4, 2))
+
+        masses = np.array([
+            np.random.uniform(0.5, 5.0),
+            np.random.uniform(0.5, 5.0),
+            np.random.uniform(0.5, 5.0),
+            0.0
+        ])
+
     else:
-        return "#d62728"  # hot red
+        positions = np.random.uniform(-2, 2, (4, 2))
+        velocities = np.random.uniform(-0.8, 0.8, (4, 2))
+
+        masses = np.array([
+            np.random.uniform(0.5, 5.0),
+            np.random.uniform(0.5, 5.0),
+            np.random.uniform(0.5, 5.0),
+            0.0
+        ])
+
+    return positions, velocities, masses
 
 
-def calculate_planet_temperature(planet_pos, body_positions, body_masses):
-    """
-    Simple visual temperature model.
-
-    Temperature increases when the planet is close to massive bodies.
-
-    This is not a real astrophysical temperature model.
-    It is designed for visualization only.
-    """
-    temp = base_temp
-
-    for j in range(3):
-        r = np.linalg.norm(planet_pos - body_positions[j])
-        temp += heating_strength * body_masses[j] / (r**2 + temp_scale)
-
-    return temp
-
-
-# ============================================================
-# Initial conditions
-# ============================================================
-
-# Initial positions: 3 massive bodies + 1 small planet
-positions0 = np.array([
-    [-1.0, 0.0],    # Mass 1
-    [1.0, 0.0],     # Mass 2
-    [0.0, 0.8],     # Mass 3
-    [0.0, -1.5]     # Planet
-])
-
-# Initial velocities
-velocities0 = np.array([
-    [0.0, 0.35],    # Mass 1
-    [0.0, -0.35],   # Mass 2
-    [0.45, 0.0],    # Mass 3
-    [0.8, 0.0]      # Planet
-])
+positions0, velocities0, masses = get_initial_conditions(preset)
 
 y0 = np.concatenate([
     positions0.flatten(),
     velocities0.flatten()
 ])
 
-
-# ============================================================
-# Physics engine
-# ============================================================
 
 def equations(t, y):
     positions = y[:8].reshape(4, 2)
@@ -155,6 +180,50 @@ def equations(t, y):
     ])
 
 
+def calculate_planet_temperature(positions):
+    """
+    Simple planet temperature model.
+
+    This is not a real astrophysics model.
+    It is a visual/educational model:
+    - closer to massive bodies = hotter
+    - farther away = colder
+    - thermal inertia smooths fast changes
+    """
+
+    planet_positions = positions[3]       # shape: (2, frames)
+    body_positions = positions[:3]        # shape: (3, 2, frames)
+
+    equilibrium_temps = []
+
+    for k in range(positions.shape[2]):
+        planet = planet_positions[:, k]
+        heating = 0.0
+
+        for j in range(3):
+            body = body_positions[j, :, k]
+            distance = np.linalg.norm(planet - body) + 1e-6
+            heating += masses[j] / distance**2
+
+        # Scale heating into a visible temperature range
+        temp = 180 + 120 * np.sqrt(heating)
+        equilibrium_temps.append(temp)
+
+    equilibrium_temps = np.array(equilibrium_temps)
+
+    # Apply simple thermal inertia
+    smooth_temps = np.zeros_like(equilibrium_temps)
+    smooth_temps[0] = equilibrium_temps[0]
+
+    inertia = 0.03
+    for k in range(1, len(equilibrium_temps)):
+        smooth_temps[k] = smooth_temps[k - 1] + inertia * (
+            equilibrium_temps[k] - smooth_temps[k - 1]
+        )
+
+    return smooth_temps
+
+
 def run_simulation():
     t_eval = np.linspace(0, t_max, steps)
 
@@ -170,38 +239,17 @@ def run_simulation():
     return solution.y[:8].reshape(4, 2, -1)
 
 
-# ============================================================
-# Run simulation
-# ============================================================
-
 if run or "positions" not in st.session_state:
     with st.spinner("Running simulation..."):
         st.session_state.positions = run_simulation()
+        st.session_state.temperatures = calculate_planet_temperature(
+            st.session_state.positions
+        )
 
 positions = st.session_state.positions
+temperatures = st.session_state.temperatures
+
 n_frames = positions.shape[2]
-
-# ============================================================
-# Temperature calculation for planet
-# ============================================================
-
-planet_temperatures = []
-
-for k in range(n_frames):
-    planet_pos = positions[3, :, k]
-    body_positions = positions[:3, :, k]
-    temp = calculate_planet_temperature(
-        planet_pos,
-        body_positions,
-        masses[:3]
-    )
-    planet_temperatures.append(temp)
-
-planet_temperatures = np.array(planet_temperatures)
-
-# ============================================================
-# Plot bounds
-# ============================================================
 
 all_x = positions[:, 0, :].flatten()
 all_y = positions[:, 1, :].flatten()
@@ -210,10 +258,6 @@ x_min, x_max = np.min(all_x), np.max(all_x)
 y_min, y_max = np.min(all_y), np.max(all_y)
 
 margin = 0.15 * max(x_max - x_min, y_max - y_min, 1)
-
-# ============================================================
-# Create animation frames
-# ============================================================
 
 frames = []
 
@@ -230,10 +274,7 @@ for frame in range(1, n_frames, frame_step):
                 x=positions[i, 0, start_trace:safe_frame],
                 y=positions[i, 1, start_trace:safe_frame],
                 mode="lines",
-                line=dict(
-                    color=colors[i],
-                    width=2 if i < 3 else 1
-                ),
+                line=dict(color=colors[i], width=2 if i < 3 else 1),
                 hoverinfo="skip",
                 showlegend=False
             )
@@ -241,138 +282,65 @@ for frame in range(1, n_frames, frame_step):
 
     # Markers
     for i in range(4):
-        if i == 3:
-            marker_color = temperature_to_color(planet_temperatures[safe_frame])
-            marker_size = 9
-            hover_text = (
-                f"Planet<br>"
-                f"Temperature: {planet_temperatures[safe_frame]:.1f}<br>"
-                f"x: {positions[i, 0, safe_frame]:.2f}<br>"
-                f"y: {positions[i, 1, safe_frame]:.2f}"
-            )
-        else:
-            marker_color = colors[i]
-            marker_size = mass_to_size(masses[i])
-            hover_text = (
-                f"{names[i]}<br>"
-                f"Mass: {masses[i]:.2f}<br>"
-                f"x: {positions[i, 0, safe_frame]:.2f}<br>"
-                f"y: {positions[i, 1, safe_frame]:.2f}"
-            )
-
         frame_data.append(
             go.Scatter(
                 x=[positions[i, 0, safe_frame]],
                 y=[positions[i, 1, safe_frame]],
                 mode="markers",
                 marker=dict(
-                    size=marker_size,
-                    color=marker_color
+                    size=mass_to_size(masses[i]) if i < 3 else 8,
+                    color=colors[i]
                 ),
                 name=names[i],
                 legendgroup=names[i],
-                showlegend=True,
-                hovertext=hover_text,
-                hoverinfo="text"
+                showlegend=True
             )
         )
 
     frames.append(go.Frame(data=frame_data, name=str(safe_frame)))
 
 
-# ============================================================
-# Initial frame
-# ============================================================
-
 initial_data = []
 
-# Empty traces at frame 0
+# Empty traces at the first frame
 for i in range(4):
     initial_data.append(
         go.Scatter(
             x=[],
             y=[],
             mode="lines",
-            line=dict(
-                color=colors[i],
-                width=2 if i < 3 else 1
-            ),
+            line=dict(color=colors[i], width=2 if i < 3 else 1),
             hoverinfo="skip",
             showlegend=False
         )
     )
 
-# Markers at frame 0
+# Initial markers
 for i in range(4):
-    if i == 3:
-        marker_color = temperature_to_color(planet_temperatures[0])
-        marker_size = 9
-        hover_text = (
-            f"Planet<br>"
-            f"Temperature: {planet_temperatures[0]:.1f}<br>"
-            f"x: {positions[i, 0, 0]:.2f}<br>"
-            f"y: {positions[i, 1, 0]:.2f}"
-        )
-    else:
-        marker_color = colors[i]
-        marker_size = mass_to_size(masses[i])
-        hover_text = (
-            f"{names[i]}<br>"
-            f"Mass: {masses[i]:.2f}<br>"
-            f"x: {positions[i, 0, 0]:.2f}<br>"
-            f"y: {positions[i, 1, 0]:.2f}"
-        )
-
     initial_data.append(
         go.Scatter(
             x=[positions[i, 0, 0]],
             y=[positions[i, 1, 0]],
             mode="markers",
             marker=dict(
-                size=marker_size,
-                color=marker_color
+                size=mass_to_size(masses[i]) if i < 3 else 8,
+                color=colors[i]
             ),
             name=names[i],
             legendgroup=names[i],
-            showlegend=True,
-            hovertext=hover_text,
-            hoverinfo="text"
+            showlegend=True
         )
     )
-
-
-# ============================================================
-# Build Plotly figure
-# ============================================================
 
 fig = go.Figure(
     data=initial_data,
     frames=frames
 )
 
-slider_steps = []
-
-for frame in range(1, n_frames, frame_step):
-    safe_frame = min(frame, n_frames - 1)
-    slider_steps.append(
-        dict(
-            method="animate",
-            args=[
-                [str(safe_frame)],
-                dict(
-                    mode="immediate",
-                    frame=dict(duration=0, redraw=True),
-                    transition=dict(duration=0)
-                )
-            ],
-            label=str(safe_frame)
-        )
-    )
-
 fig.update_layout(
-    width=700,
-    height=700,
-    title="Three-Body Motion with Test Planet Temperature",
+    width=650,
+    height=650,
+    title="Three-Body Motion with a Test Planet",
     xaxis=dict(
         range=[x_min - margin, x_max + margin],
         title="x"
@@ -417,51 +385,70 @@ fig.update_layout(
     ],
     sliders=[
         dict(
-            steps=slider_steps,
+            steps=[
+                dict(
+                    method="animate",
+                    args=[
+                        [str(frame)],
+                        dict(
+                            mode="immediate",
+                            frame=dict(duration=0, redraw=True),
+                            transition=dict(duration=0)
+                        )
+                    ],
+                    label=str(frame)
+                )
+                for frame in range(1, n_frames, frame_step)
+            ],
             currentvalue=dict(prefix="Frame: ")
         )
-    ],
-    legend=dict(
-        title="Objects"
+    ]
+)
+
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.plotly_chart(fig, use_container_width=False)
+
+with col2:
+    st.subheader("Planet Temperature")
+
+    temp_now = temperatures[0]
+    temp_min = float(np.min(temperatures))
+    temp_max = float(np.max(temperatures))
+    temp_mean = float(np.mean(temperatures))
+
+    st.metric("Initial temperature", f"{temp_now:.1f} K")
+    st.write(f"Minimum: **{temp_min:.1f} K**")
+    st.write(f"Average: **{temp_mean:.1f} K**")
+    st.write(f"Maximum: **{temp_max:.1f} K**")
+
+    if 240 <= temp_mean <= 320 and (temp_max - temp_min) < 120:
+        st.success("Relatively stable / potentially habitable temperature range")
+    elif temp_max - temp_min > 300:
+        st.warning("Large temperature swings")
+    else:
+        st.info("Moderate or cold temperature range")
+
+    temp_fig = go.Figure()
+    temp_fig.add_trace(
+        go.Scatter(
+            x=np.arange(n_frames),
+            y=temperatures,
+            mode="lines",
+            name="Planet temperature"
+        )
     )
-)
-
-st.plotly_chart(fig, use_container_width=False)
-
-# ============================================================
-# Temperature summary
-# ============================================================
-
-st.subheader("Planet Temperature Summary")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric("Minimum temperature", f"{np.min(planet_temperatures):.1f}")
-col2.metric("Average temperature", f"{np.mean(planet_temperatures):.1f}")
-col3.metric("Maximum temperature", f"{np.max(planet_temperatures):.1f}")
-
-temp_fig = go.Figure()
-
-temp_fig.add_trace(
-    go.Scatter(
-        x=np.arange(n_frames),
-        y=planet_temperatures,
-        mode="lines",
-        name="Planet temperature"
+    temp_fig.update_layout(
+        width=420,
+        height=300,
+        title="Planet Temperature Over Time",
+        xaxis_title="Frame",
+        yaxis_title="Temperature (K)"
     )
-)
-
-temp_fig.update_layout(
-    width=700,
-    height=300,
-    title="Planet Temperature over Time",
-    xaxis_title="Frame",
-    yaxis_title="Temperature"
-)
-
-st.plotly_chart(temp_fig, use_container_width=False)
+    st.plotly_chart(temp_fig, use_container_width=True)
 
 st.caption(
-    "Temperature is a simplified visual model. "
-    "It increases when the planet gets closer to the three massive bodies."
+    "The planet follows the gravity of the three massive bodies but does not affect them. "
+    "Temperature is a simplified visual model based on distance from the massive bodies."
 )
